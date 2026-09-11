@@ -13,6 +13,7 @@ app.config.from_mapping(
     CELERY=dict(
         broker_url=REDIS_URL,
         result_backend=DATABASE_URL,
+        task_default_queue="quiabo",
         task_ignore_result=False,
     ),
 )

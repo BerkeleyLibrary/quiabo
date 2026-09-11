@@ -51,6 +51,30 @@ services:
     volumes:
       - ./quiabo:/app/quiabo:rw
 
+  flower:
+    build:
+      context: .
+    profiles:
+      - flower
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    init: true
+    restart: always
+    command: celery -A quiabo.celery_app flower
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    ports:
+      - 127.0.0.1:5555:5555
+    volumes:
+      - ./quiabo:/app/quiabo:rw
+
   redis:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

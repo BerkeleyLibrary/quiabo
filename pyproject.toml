@@ -9,6 +9,7 @@ version = "0.0.1"
 dependencies = [
     "celery",
     "flask",
+    "flower",
     "gunicorn",
     "psycopg2",
     "redis",
