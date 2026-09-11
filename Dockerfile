@@ -1,7 +1,7 @@
 FROM python:3.14-slim AS reqs
 
 ENV APP_USER=quiabo
-ENV APP_UID=49999
+ENV APP_UID=40098
 ENV VIRTUAL_ENV=/venv
 
 RUN apt-get update -y && apt-get upgrade -y \
