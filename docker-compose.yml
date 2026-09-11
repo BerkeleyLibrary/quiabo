@@ -8,10 +8,10 @@ x-dbconfig:
 
 x-quiabo-common:
   environment: &quiabo-common-environment
-    QUIABO_CELERY__broker_url: ${QUIABO__CELERY__broker_url:-redis://redis:6379/}
+    QUIABO_CELERY__broker_url: ${QUIABO__CELERY__broker_url:-redis://redis:6379}
     QUIABO_CELERY__result_backend: ${QUIABO__CELERY__result_backend:-db+postgresql://${POSTGRES_USER:-quiabo}:${POSTGRES_PASSWORD:-quiabo}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-quiabo}}
-    QUIABO_CELERY__task_default_queue: quiabo
-    QUIABO_CELERY__task_ignore_result: false
+    QUIABO_CELERY__task_default_queue: ${QUIABO_CELERY__task_default_queue:-quiabo}
+    QUIABO_CELERY__task_ignore_result: ${QUIABO_CELERY__task_ignore_result:-false}
 
 
 services:
@@ -34,8 +34,10 @@ services:
     build:
       context: .
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       <<: 
         - *quiabo-common-environment
@@ -51,8 +53,10 @@ services:
     build:
       context: .
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       <<:
         - *quiabo-common-environment
