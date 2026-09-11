@@ -1,0 +1,67 @@
+services:
+
+  db:
+    environment: &dbconfig
+      POSTGRES_USER: ${POSTGRES_USER:-quiabo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quiabo}
+      POSTGRES_HOST: ${POSTGRES_HOST:-db}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-quiabo}
+      DATABASE_URL: ${DATABASE_URL:-db+postgresql://${POSTGRES_USER:-quiabo}:${POSTGRES_PASSWORD:-quiabo}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-quiabo}}
+    image: postgres:16
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-root}", "-d", "${POSTGRES_DB:-quiabo}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    ports:
+      - 5432:5432
+    restart: always
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+    depends_on:
+      - db
+      - redis
+    environment:
+      <<: *dbconfig
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    init: true
+    restart: always
+    ports:
+      - 8000:8000
+    volumes:
+      - ./quiabo:/app/quiabo:rw
+
+  worker:
+    build:
+      context: .
+    depends_on:
+      - db
+      - redis
+    environment:
+      <<: *dbconfig
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    init: true
+    restart: always
+    command: celery -A quiabo.celery_app worker --loglevel INFO
+    volumes:
+      - ./quiabo:/app/quiabo:rw
+
+  redis:
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    image: redis:8
+    ports:
+      - 6379:6379
+    restart: always
+
+volumes:
+  postgres-db-volume:
