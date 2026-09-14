@@ -1,0 +1,22 @@
+services:
+  db:
+    volumes: !reset
+  
+  redis:
+    volumes: !reset
+
+  app:
+    build: !reset
+    depends_on: !reset
+    ports: !reset
+    image: ${DOCKER_APP_IMAGE}
+    env_file: !override env.example
+    volumes: !reset
+
+  worker:
+    build: !reset
+    image: ${DOCKER_APP_IMAGE}
+    depends_on: !reset
+    ports: !reset
+    env_file: !override env.example
+    volumes: !reset

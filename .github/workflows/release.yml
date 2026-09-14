@@ -1,0 +1,13 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: BerkeleyLibrary/.github/.github/workflows/docker-release.yml@main
+    with:
+      image: ghcr.io/${{ github.repository }}
