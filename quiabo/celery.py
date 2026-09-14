@@ -12,7 +12,7 @@ def celery_init_app(app: Flask) -> Celery:
         """
         Class used to provide access to Celery decoratorss.
 
-        :see https://flask.palletsprojects.com/en/stable/patterns/celery/
+        :see: https://flask.palletsprojects.com/en/stable/patterns/celery/
         """
         def __call__(self, *args: object, **kwargs: object) -> object:
             """
@@ -21,9 +21,9 @@ def celery_init_app(app: Flask) -> Celery:
 
             :param args: positional arguments to get passed in the call
             :type args: object
-            :param kwargs: keyword arguments to get passed in the call:
+            :param kwargs: keyword arguments to get passed in the call
             :type kwargs: object
-            :return: The output of the  task to be run.
+            :return: The output of the task to be run.
             :rtype: Object
             """
             with app.app_context():
