@@ -13,7 +13,6 @@ x-quiabo-common:
     QUIABO_CELERY__task_default_queue: ${QUIABO_CELERY__task_default_queue:-quiabo}
     QUIABO_CELERY__task_ignore_result: ${QUIABO_CELERY__task_ignore_result:-false}
 
-
 services:
   db:
     environment:
@@ -39,7 +38,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      <<: 
+      <<:
         - *quiabo-common-environment
         - *dbconfig
     init: true
@@ -48,6 +47,7 @@ services:
       - 8000:8000
     volumes:
       - ./quiabo:/app/quiabo:rw
+      - ./test:/app/test:rw
 
   worker:
     build:
