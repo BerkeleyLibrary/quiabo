@@ -9,7 +9,7 @@ RUN apt-get update -y && apt-get upgrade -y \
         gcc \
         libpq-dev \
         libxml2-dev \
-        python3-dev \ 
+        python3-dev \
         postgresql-client \
     && rm -rf /var/lib/apt/lists/
 
@@ -45,3 +45,17 @@ RUN pip install --no-cache-dir -e .
 EXPOSE 8000
 
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0", "quiabo:app"]
+
+FROM app AS worker
+
+USER root
+
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-spa \
+        tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
+
+USER $APP_USER
