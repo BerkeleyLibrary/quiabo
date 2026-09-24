@@ -56,6 +56,8 @@ RUN apt-get update -y \
         tesseract-ocr-eng \
         tesseract-ocr-spa \
         tesseract-ocr-deu \
+        tesseract-ocr-chi-tra \
+        tesseract-ocr-ita \
     && rm -rf /var/lib/apt/lists/*
 
 USER $APP_USER

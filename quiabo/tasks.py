@@ -13,7 +13,7 @@ def run_tesseract_job(self, filelist: str, languages: list[str], output: str) ->
         meta={"filelist": filelist, "languages": languages, "output": output},
     )
 
-    command = ["tesseract", "-l", ",".join(languages), filelist, output, "pdf"]
+    command = ["tesseract", "-l", "+".join(languages), filelist, output, "pdf"]
     subprocess.run(command, check=True, capture_output=True, text=True)
 
     return {"output": f"{output}.pdf"}
