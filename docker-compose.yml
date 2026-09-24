@@ -66,6 +66,7 @@ services:
     command: celery -A quiabo.celery_app worker --loglevel INFO
     volumes:
       - ./quiabo:/app/quiabo:rw
+      - ./files:/app/files:rw
 
   flower:
     build:

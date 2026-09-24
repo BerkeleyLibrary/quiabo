@@ -1,3 +1,6 @@
+import subprocess
+from pathlib import Path
+
 from celery import shared_task
 
 
@@ -9,10 +12,8 @@ def run_tesseract_job(self, filelist: str, languages: list[str], output: str) ->
         state="STARTED",
         meta={"filelist": filelist, "languages": languages, "output": output},
     )
-    # ... invoke tesseract, update progress via self.update_state as needed ...
 
-    # until we implement tesseract, this is the command we would run.
-    return {
-        "tesseract_command": f"tesseract -l {','.join(languages)} {filelist} {output} pdf"
-    }
-    # return {"output": output}
+    command = ["tesseract", "-l", ",".join(languages), filelist, output, "pdf"]
+    subprocess.run(command, check=True, capture_output=True, text=True)
+
+    return {"output": f"{output}.pdf"}
