@@ -43,7 +43,13 @@ def test_run_tesseract_job_updates_state_and_runs_tesseract(monkeypatch):
         meta={
             "filelist": "files.txt",
             "languages": ["eng", "spa"],
-            "output": "output.pdf",
+            "output": "output",
         },
     )
-    assert result == {"output": ("output.pdf")}
+    run.assert_called_once_with(
+        ["tesseract", "-l", "eng+spa", "files.txt", "output", "pdf"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result == {"output": "output.pdf"}
