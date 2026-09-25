@@ -1,6 +1,7 @@
 """Celery tasks for running OCR jobs."""
 
 import subprocess
+from pathlib import Path
 
 from celery import shared_task
 
@@ -9,8 +10,11 @@ from celery import shared_task
 def run_tesseract_job(self, filelist: str, languages: list[str], output: str) -> dict:
     """Run Tesseract over the files listed in filelist and write output PDF."""
 
-    # strip pdf from output path if present
     output = output.removesuffix(".pdf")
+
+    output_dir = Path(output).parent
+    if not output_dir.exists():
+        raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
 
     # The state update does not need any meta, unless we want it for debugging or tracking.
     self.update_state(
