@@ -5,6 +5,8 @@ import traceback
 from pathlib import Path
 from flask import Blueprint, request
 
+from quiabo.tasks import run_tesseract_job
+
 
 bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
@@ -27,14 +29,27 @@ def create_job():
 
         filelist = Path(job["filelist"])
 
-        if not filelist.exists():
-            raise FileNotFoundError(f"{filelist} does not exist")
+        if not filelist.is_file():
+            raise FileNotFoundError(f"{filelist} does not exist or is not a file")
 
     except (ValueError, FileNotFoundError) as error:
         return _error_response(error, 422)
 
 
-    return {}, 202
+    try:
+        celery_result = run_tesseract_job.delay(
+            job["filelist"],
+            job["languages"],
+            job["output"],
+        )
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        return _error_response(error, 500)
+
+    return {
+        "job_id": celery_result.id,
+        "status": "PENDING",
+        "job_status": f"/jobs/{celery_result.id}",
+    }, 202
 
 
 def _error_response(error: Exception, status_code: int):
