@@ -33,8 +33,7 @@ not installed by default, so you'll need to do that too.
 
 ```bash
 # Install the testing and linting dependencies
-
-docker compose exec app pip install --no-cache-dir -e .[test,lint]
+docker compose exec app pip install --no-cache-dir -e '.[test,lint]'
 
 # Run all the tests
 docker compose exec app pytest
