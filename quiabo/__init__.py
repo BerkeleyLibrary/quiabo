@@ -2,7 +2,7 @@
 
 from flask import Flask
 
-from quiabo import health, root
+from quiabo import health, jobs, root
 from quiabo.celery import celery_init_app
 
 def create_app() -> Flask:
@@ -16,6 +16,7 @@ def create_app() -> Flask:
 
     flask_app.register_blueprint(root.bp)
     flask_app.register_blueprint(health.bp)
+    flask_app.register_blueprint(jobs.bp)
 
     return flask_app
 
