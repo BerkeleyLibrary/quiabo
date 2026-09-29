@@ -46,8 +46,8 @@ services:
     ports:
       - 8000:8000
     volumes:
-      - ./quiabo:/app/quiabo:rw
-      - ./test:/app/test:rw
+      - ./:/app
+      - ./files:/srv/files:ro
 
   worker:
     build:
@@ -66,12 +66,13 @@ services:
     restart: always
     command: celery -A quiabo.celery_app worker --loglevel INFO
     volumes:
-      - ./quiabo:/app/quiabo:rw
-      - ./files:/app/files:rw
+      - ./:/app
+      - ./files:/srv/files
 
   flower:
     build:
       context: .
+      target: app
     profiles:
       - flower
     depends_on:
@@ -90,8 +91,6 @@ services:
       start_period: 30s
     ports:
       - 127.0.0.1:5555:5555
-    volumes:
-      - ./quiabo:/app/quiabo:rw
 
   redis:
     healthcheck:

@@ -12,6 +12,7 @@ dependencies = [
     "flower",
     "gunicorn",
     "psycopg[c]",
+    "pytesseract",
     "redis",
     "sqlalchemy"
 ]
