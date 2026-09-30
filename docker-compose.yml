@@ -91,6 +91,8 @@ services:
       start_period: 30s
     ports:
       - 127.0.0.1:5555:5555
+    volumes:
+      - ./:/app
 
   redis:
     healthcheck:

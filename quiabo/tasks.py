@@ -3,6 +3,8 @@
 import hashlib
 from pathlib import Path
 
+# directly imports run_tesseract which is not explicitly exported by the pytesseract package
+# The two exported functions we could use force a tmp file to be created and then deleted.
 from pytesseract.pytesseract import run_tesseract
 from celery import shared_task
 
