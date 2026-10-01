@@ -1,8 +1,9 @@
 """Routes for submitting and managing OCR jobs."""
 
 import traceback
-
 from pathlib import Path
+
+from celery.result import AsyncResult
 from flask import Blueprint, request
 
 from quiabo.tasks import run_tesseract_job
@@ -50,6 +51,26 @@ def create_job():
         "status": "PENDING",
         "job_status": f"/jobs/{celery_result.id}",
     }, 202
+
+@bp.get("/<job_id>")
+def get_job(job_id: str):
+    """Get the status of an OCR job."""
+    celery_result = AsyncResult(job_id)
+
+    response = {
+        "id": job_id,
+        "status": celery_result.state,
+    }
+
+    if celery_result.state == "SUCCESS":
+        response["result"] = celery_result.result
+        response["date_done"] = celery_result.date_done.isoformat()
+
+    if celery_result.state == "FAILURE":
+        response["result"] = str(celery_result.result)
+        response["traceback"] = celery_result.traceback
+
+    return response, 200
 
 
 def _error_response(error: Exception, status_code: int):
