@@ -1,4 +1,6 @@
 """Tests for the jobs endpoints."""
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 
@@ -169,3 +171,78 @@ def test_create_job_requires_filelist_to_be_file(client, tmp_path):
     assert response.json["status"] == "ERROR"
     assert "does not exist or is not a file" in response.json["result"]
     assert "traceback" in response.json
+
+def test_get_job_route_exists(client):
+    """GET /jobs/<job_id> is a valid route."""
+    response = client.get("/jobs/test-job-id")
+
+    assert response.status_code != 404
+
+def test_get_job_returns_celery_status(client, monkeypatch):
+    """GET /jobs/<job_id> returns job's Celery status."""
+    fake_result = SimpleNamespace(state="STARTED")
+
+    monkeypatch.setattr(
+        "quiabo.jobs.AsyncResult",
+        lambda job_id: fake_result,
+    )
+
+    response = client.get("/jobs/test-job-id")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "id": "test-job-id",
+        "status": "STARTED",
+    }
+
+def test_get_successful_job_returns_result(client, monkeypatch):
+    """GET a successful job returns its result and completion date."""
+    fake_result = SimpleNamespace(
+        state="SUCCESS",
+        result={
+            "output_path": "/app/files/test.pdf",
+            "sha256": "abc123",
+        },
+        date_done=datetime(2026, 9, 28, 16, 0, 0),
+    )
+
+    monkeypatch.setattr(
+        "quiabo.jobs.AsyncResult",
+        lambda job_id: fake_result,
+    )
+
+    response = client.get("/jobs/test-job-id")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "id": "test-job-id",
+        "status": "SUCCESS",
+        "result": {
+            "output_path": "/app/files/test.pdf",
+            "sha256": "abc123",
+        },
+        "date_done": "2026-09-28T16:00:00",
+    }
+
+def test_get_failed_job_returns_error(client, monkeypatch):
+    """GET a failed job returns its error and traceback."""
+    fake_result = SimpleNamespace(
+        state="FAILURE",
+        result="Tesseract failed",
+        traceback="Traceback: something went horribly wrong",
+    )
+
+    monkeypatch.setattr(
+        "quiabo.jobs.AsyncResult",
+        lambda job_id: fake_result,
+    )
+
+    response = client.get("/jobs/test-job-id")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "id": "test-job-id",
+        "status": "FAILURE",
+        "result": "Tesseract failed",
+        "traceback": "Traceback: something went horribly wrong",
+    }
