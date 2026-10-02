@@ -1,8 +1,11 @@
 """Celery tasks for running OCR jobs."""
 
-import subprocess
+import hashlib
 from pathlib import Path
 
+# directly imports run_tesseract which is not explicitly exported by the pytesseract package
+# The two exported functions we could use force a tmp file to be created and then deleted.
+from pytesseract.pytesseract import run_tesseract
 from celery import shared_task
 
 
@@ -22,7 +25,19 @@ def run_tesseract_job(self, filelist: str, languages: list[str], output: str) ->
         meta={"filelist": filelist, "languages": languages, "output": output},
     )
 
-    command = ["tesseract", "-l", "+".join(languages), filelist, output, "pdf"]
-    subprocess.run(command, check=True, capture_output=True, text=True)
+    kwargs = {
+        "input_filename": filelist,
+        "output_filename_base": output,
+        "extension": "pdf",
+        "lang": "+".join(languages),
+    }
 
-    return {"output": f"{output}.pdf"}
+    try:
+        run_tesseract(**kwargs)
+        output_path = Path(f"{output}.pdf")
+        with output_path.open("rb") as f:
+            sha256 = hashlib.file_digest(f, "sha256").hexdigest()
+    except Exception as e:
+        raise RuntimeError(f"Error running Tesseract: {e}") from e
+
+    return {"output_path": str(output_path), "sha256": sha256}

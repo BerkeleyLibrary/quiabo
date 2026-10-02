@@ -1,6 +1,10 @@
 """Unit tests for the shared task defined in ``tasks.py``."""
 
+import hashlib
+from pathlib import Path
 from unittest.mock import Mock
+
+import pytest
 
 from quiabo.tasks import run_tesseract_job
 
@@ -28,57 +32,103 @@ def test_shared_task_delay_delegates_to_apply_async(monkeypatch):
     )
 
 
-def test_run_tesseract_job_updates_state_and_runs_tesseract(monkeypatch):
-    """Verify that the task updates state and invokes Tesseract."""
+def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_path):
+    """Verify that the task runs Tesseract and returns the PDF digest."""
+    filelist = tmp_path / "files.txt"
+    filelist.touch()
+    output = tmp_path / "output"
+    pdf_contents = b"generated PDF"
+
     update_state = Mock()
     run = Mock()
+
+    def write_output(**kwargs):
+        Path(f"{kwargs['output_filename_base']}.pdf").write_bytes(pdf_contents)
+
+    run.side_effect = write_output
     monkeypatch.setattr(run_tesseract_job, "update_state", update_state)
-    monkeypatch.setattr("quiabo.tasks.subprocess.run", run)
+    monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
 
     result = run_tesseract_job.run(
-        "files.txt",
+        str(filelist),
         ["eng", "spa"],
-        "output",
+        str(output),
     )
 
     update_state.assert_called_once_with(
         state="STARTED",
         meta={
-            "filelist": "files.txt",
+            "filelist": str(filelist),
             "languages": ["eng", "spa"],
-            "output": "output",
+            "output": str(output),
         },
     )
     run.assert_called_once_with(
-        ["tesseract", "-l", "eng+spa", "files.txt", "output", "pdf"],
-        check=True,
-        capture_output=True,
-        text=True,
+        input_filename=str(filelist),
+        output_filename_base=str(output),
+        extension="pdf",
+        lang="eng+spa",
     )
-    assert result == {"output": "output.pdf"}
+    assert result == {
+        "output_path": f"{output}.pdf",
+        "sha256": hashlib.sha256(pdf_contents).hexdigest(),
+    }
 
 
-def test_run_tesseract_job_removes_pdf_suffix(monkeypatch):
+def test_run_tesseract_job_removes_pdf_suffix(monkeypatch, tmp_path):
     """Verify that an existing PDF suffix is removed before invocation."""
     update_state = Mock()
     run = Mock()
-    monkeypatch.setattr(run_tesseract_job, "update_state", update_state)
-    monkeypatch.setattr("quiabo.tasks.subprocess.run", run)
+    output = tmp_path / "output.pdf"
+    output_base = str(output.with_suffix(""))
 
-    result = run_tesseract_job.run("files.txt", ["eng"], "output.pdf")
+    def write_output(**kwargs):
+        Path(f"{kwargs['output_filename_base']}.pdf").touch()
+
+    run.side_effect = write_output
+    monkeypatch.setattr(run_tesseract_job, "update_state", update_state)
+    monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
+
+    result = run_tesseract_job.run("files.txt", ["eng"], str(output))
 
     update_state.assert_called_once_with(
         state="STARTED",
         meta={
             "filelist": "files.txt",
             "languages": ["eng"],
-            "output": "output",
+            "output": output_base,
         },
     )
     run.assert_called_once_with(
-        ["tesseract", "-l", "eng", "files.txt", "output", "pdf"],
-        check=True,
-        capture_output=True,
-        text=True,
+        input_filename="files.txt",
+        output_filename_base=output_base,
+        extension="pdf",
+        lang="eng",
     )
-    assert result == {"output": "output.pdf"}
+    assert result == {
+        "output_path": str(output),
+        "sha256": hashlib.sha256(b"").hexdigest(),
+    }
+
+
+def test_run_tesseract_job_requires_existing_output_directory(tmp_path):
+    """Verify that the task rejects a missing output directory."""
+    output = tmp_path / "missing" / "output"
+
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        run_tesseract_job.run("files.txt", ["eng"], str(output))
+
+
+def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
+    """Verify that Tesseract errors are wrapped with task context."""
+    output = tmp_path / "output"
+    error = RuntimeError("Tesseract failed")
+    run = Mock(side_effect=error)
+    monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
+
+    with pytest.raises(
+        RuntimeError, match="Error running Tesseract: Tesseract failed"
+    ) as exc_info:
+        run_tesseract_job.run("files.txt", ["eng"], str(output))
+
+    assert exc_info.value.__cause__ is error
