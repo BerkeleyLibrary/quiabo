@@ -75,10 +75,12 @@ def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_pat
     }
 
 
-def test_run_tesseract_job_removes_pdf_suffix(monkeypatch):
+def test_run_tesseract_job_removes_pdf_suffix(monkeypatch, tmp_path):
     """Verify that an existing PDF suffix is removed before invocation."""
     update_state = Mock()
     run = Mock()
+    output = tmp_path / "output.pdf"
+    output_base = str(output.with_suffix(""))
 
     def write_output(**kwargs):
         Path(f"{kwargs['output_filename_base']}.pdf").touch()
@@ -87,24 +89,24 @@ def test_run_tesseract_job_removes_pdf_suffix(monkeypatch):
     monkeypatch.setattr(run_tesseract_job, "update_state", update_state)
     monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
 
-    result = run_tesseract_job.run("files.txt", ["eng"], "output.pdf")
+    result = run_tesseract_job.run("files.txt", ["eng"], str(output))
 
     update_state.assert_called_once_with(
         state="STARTED",
         meta={
             "filelist": "files.txt",
             "languages": ["eng"],
-            "output": "output",
+            "output": output_base,
         },
     )
     run.assert_called_once_with(
         input_filename="files.txt",
-        output_filename_base="output",
+        output_filename_base=output_base,
         extension="pdf",
         lang="eng",
     )
     assert result == {
-        "output_path": "output.pdf",
+        "output_path": str(output),
         "sha256": hashlib.sha256(b"").hexdigest(),
     }
 
