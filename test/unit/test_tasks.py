@@ -157,15 +157,16 @@ def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
 
     assert exc_info.value.__cause__ is error
 
+
 def test_run_tesseract_job_fails_when_language_unavailable(monkeypatch, tmp_path):
     """Verify that the task fails when Tesseract cannot load a language."""
     output = tmp_path / "output"
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     error = TesseractError(1, "Failed loading language 'swe'")
     run = Mock(side_effect=error)
 
     monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
 
-    with pytest.raises(
-        RuntimeError, match="Failed loading language 'swe'"
-    ):
-        run_tesseract_job.run("files.txt", ["swe"], str(output))
+    with pytest.raises(RuntimeError, match="Failed loading language 'swe'"):
+        run_tesseract_job.run(str(filelist), ["swe"], str(output))
