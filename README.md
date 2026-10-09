@@ -10,12 +10,13 @@ Python dependencies are declared in `pyproject.toml`.
 
 Spin up the application using Docker Compose. There are number of dependencies (Postgres and Redis) as well as Flask/Celery app components (`app`, `worker`, and optionially `flower`). Redis serves as the Celery broker (source of jobs) and Postgres is the Celery results backend.
 
+In order to run Quiabo on the same system as [Mokelumne](https://github.com/BerkeleyLibrary/mokelumne) for development or integration testing, you need to symlink the `tmp` directory to Mokelumne's.  Otherwise, you will need to create an empty `tmp` directory before starting Quiabo.
+
 ```bash
-# in order to run quiabo with mokelumne you need a symlink to mokelumne's tmp directory
 # assuming mokelumne is installed in this project's parent...
 ln -s ../mokelumne/tmp tmp
 
-# IF you do not have mokelumne installed locally, make an empty tmp directory
+# or, if you do not have mokelumne installed locally, make an empty tmp directory:
 # mkdir tmp
 
 # Build the Docker image for app, worker, and flower
