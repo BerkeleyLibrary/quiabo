@@ -13,6 +13,16 @@ from celery import shared_task
 def run_tesseract_job(self, filelist: str, languages: list[str], output: str) -> dict:
     """Run Tesseract over the files listed in filelist and write output PDF."""
 
+    # is filelist a valid file with at least one line?  If not, raise an error.
+    filelist_path = Path(filelist)
+    if not filelist_path.is_file():
+        raise FileNotFoundError(
+            f"File list {filelist} does not exist or is not a file."
+        )
+    with filelist_path.open("r", encoding="utf-8") as f:
+        if not any(line.strip() for line in f):
+            raise ValueError(f"File list {filelist} is empty.")
+
     output = output.removesuffix(".pdf")
 
     output_dir = Path(output).parent

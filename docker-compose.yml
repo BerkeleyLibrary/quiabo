@@ -23,8 +23,6 @@ services:
       interval: 10s
       retries: 5
       start_period: 5s
-    ports:
-      - 5432:5432
     restart: always
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
@@ -47,7 +45,7 @@ services:
       - 8000:8000
     volumes:
       - ./:/app
-      - ./files:/srv/files:ro
+      - ./tmp:/srv:ro
 
   worker:
     build:
@@ -67,7 +65,7 @@ services:
     command: celery -A quiabo.celery_app worker --loglevel INFO
     volumes:
       - ./:/app
-      - ./files:/srv/files
+      - ./tmp:/srv
 
   flower:
     build:
@@ -102,8 +100,6 @@ services:
       retries: 50
       start_period: 30s
     image: redis:8
-    ports:
-      - 6379:6379
     restart: always
 
 volumes:

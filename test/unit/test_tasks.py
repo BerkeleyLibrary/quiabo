@@ -33,10 +33,27 @@ def test_shared_task_delay_delegates_to_apply_async(monkeypatch):
     )
 
 
+def test_run_tesseract_job_raises_error_for_empty_filelist(tmp_path):
+    """Verify that the task rejects an empty file list."""
+    filelist = tmp_path / "empty.txt"
+    filelist.touch()
+
+    with pytest.raises(ValueError, match="is empty"):
+        run_tesseract_job.run(str(filelist), ["eng"], "output")
+
+
+def test_run_tesseract_job_raises_error_for_missing_filelist(tmp_path):
+    """Verify that the task rejects a missing file list."""
+    filelist = tmp_path / "missing.txt"
+
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        run_tesseract_job.run(str(filelist), ["eng"], "output")
+
+
 def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_path):
     """Verify that the task runs Tesseract and returns the PDF digest."""
     filelist = tmp_path / "files.txt"
-    filelist.touch()
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     output = tmp_path / "output"
     pdf_contents = b"generated PDF"
 
@@ -82,6 +99,8 @@ def test_run_tesseract_job_removes_pdf_suffix(monkeypatch, tmp_path):
     run = Mock()
     output = tmp_path / "output.pdf"
     output_base = str(output.with_suffix(""))
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
 
     def write_output(**kwargs):
         Path(f"{kwargs['output_filename_base']}.pdf").touch()
@@ -90,18 +109,18 @@ def test_run_tesseract_job_removes_pdf_suffix(monkeypatch, tmp_path):
     monkeypatch.setattr(run_tesseract_job, "update_state", update_state)
     monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
 
-    result = run_tesseract_job.run("files.txt", ["eng"], str(output))
+    result = run_tesseract_job.run(str(filelist), ["eng"], str(output))
 
     update_state.assert_called_once_with(
         state="STARTED",
         meta={
-            "filelist": "files.txt",
+            "filelist": str(filelist),
             "languages": ["eng"],
             "output": output_base,
         },
     )
     run.assert_called_once_with(
-        input_filename="files.txt",
+        input_filename=str(filelist),
         output_filename_base=output_base,
         extension="pdf",
         lang="eng",
@@ -115,14 +134,18 @@ def test_run_tesseract_job_removes_pdf_suffix(monkeypatch, tmp_path):
 def test_run_tesseract_job_requires_existing_output_directory(tmp_path):
     """Verify that the task rejects a missing output directory."""
     output = tmp_path / "missing" / "output"
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
 
     with pytest.raises(FileNotFoundError, match="does not exist"):
-        run_tesseract_job.run("files.txt", ["eng"], str(output))
+        run_tesseract_job.run(str(filelist), ["eng"], str(output))
 
 
 def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
     """Verify that Tesseract errors are wrapped with task context."""
     output = tmp_path / "output"
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     error = RuntimeError("Tesseract failed")
     run = Mock(side_effect=error)
     monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
@@ -130,19 +153,20 @@ def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
     with pytest.raises(
         RuntimeError, match="Error running Tesseract: Tesseract failed"
     ) as exc_info:
-        run_tesseract_job.run("files.txt", ["eng"], str(output))
+        run_tesseract_job.run(str(filelist), ["eng"], str(output))
 
     assert exc_info.value.__cause__ is error
+
 
 def test_run_tesseract_job_fails_when_language_unavailable(monkeypatch, tmp_path):
     """Verify that the task fails when Tesseract cannot load a language."""
     output = tmp_path / "output"
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     error = TesseractError(1, "Failed loading language 'swe'")
     run = Mock(side_effect=error)
 
     monkeypatch.setattr("quiabo.tasks.run_tesseract", run)
 
-    with pytest.raises(
-        RuntimeError, match="Failed loading language 'swe'"
-    ):
-        run_tesseract_job.run("files.txt", ["swe"], str(output))
+    with pytest.raises(RuntimeError, match="Failed loading language 'swe'"):
+        run_tesseract_job.run(str(filelist), ["swe"], str(output))
