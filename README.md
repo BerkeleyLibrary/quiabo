@@ -33,7 +33,7 @@ docker compose up --detach
 docker compose up --profile flower --detach
 ```
 
-## Testing
+## Testing & Linting
 
 Once the stack is started, execute the tests by running `pytest` in one
 of the running containers. Note that testing and linting dependencies are
@@ -52,6 +52,17 @@ docker compose exec app pytest -m unit
 ```
 
 Test results/reports are written to `./artifacts/pytest`.
+
+```bash
+# pylint
+docker compose exec app python -m pylint --persistent=n quiabo test
+
+# pydoclint
+docker compose exec app pydoclint quiabo test
+
+# mypy
+docker compose exec app python -m mypy --explicit-package-bases quiabo test
+```
 
 ## Configuration
 

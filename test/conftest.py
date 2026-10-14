@@ -6,21 +6,22 @@ import pytest
 from flask import Flask
 from quiabo import app as flask_app
 
+
 @pytest.fixture()
-def app():
+def app() -> Flask:
     """Create a configured instance of the Flask application for testing.
 
     :return: The Flask application.
-    :rtype: flask.Flask
+    :rtype: Flask
     """
     app = flask_app
-    app.config.update({
-        "TESTING": True,
-    })
+    app.config.update(
+        {
+            "TESTING": True,
+        }
+    )
 
-    yield app
-
-    # clean up / reset resources here
+    return app
 
 
 @pytest.fixture()

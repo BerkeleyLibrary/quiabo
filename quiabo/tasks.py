@@ -10,7 +10,7 @@ from celery import shared_task
 
 
 @shared_task(bind=True)
-def run_tesseract_job(self, filelist: str, languages: list[str], output: str) -> dict:
+def run_tesseract_job(self, filelist: str, languages: list[str]) -> dict:
     """Run Tesseract over the files listed in filelist and write output PDF."""
 
     # is filelist a valid file with at least one line?  If not, raise an error.
@@ -23,16 +23,17 @@ def run_tesseract_job(self, filelist: str, languages: list[str], output: str) ->
         if not any(line.strip() for line in f):
             raise ValueError(f"File list {filelist} is empty.")
 
-    output = output.removesuffix(".pdf")
+    # output_parent will be something like '/path/to/derivatives/{images_dir_name}'
+    # output, or base name of the pdf, will look like '/path/to/derivatives/C124862721/C124862721'
+    # tesseract appends the .pdf extension
 
-    output_dir = Path(output).parent
-    if not output_dir.exists():
-        raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
+    output_parent = filelist_path.parent
+    output = str(output_parent / output_parent.name)
 
     # The state update does not need any meta, unless we want it for debugging or tracking.
     self.update_state(
         state="STARTED",
-        meta={"filelist": filelist, "languages": languages, "output": output},
+        meta={"filelist": filelist, "languages": languages},
     )
 
     kwargs = {
@@ -44,8 +45,8 @@ def run_tesseract_job(self, filelist: str, languages: list[str], output: str) ->
 
     try:
         run_tesseract(**kwargs)
-        output_path = Path(f"{output}.pdf")
-        with output_path.open("rb") as f:
+        output_path = f"{output}.pdf"
+        with open(output_path, "rb") as f:
             sha256 = hashlib.file_digest(f, "sha256").hexdigest()
     except Exception as e:
         raise RuntimeError(f"Error running Tesseract: {e}") from e

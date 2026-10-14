@@ -4,8 +4,9 @@ from flask import Blueprint
 
 bp = Blueprint("health", __name__, url_prefix="/health")
 
+
 @bp.route("")
-def default() -> dict[str, dict[str, str|bool]]:
+def default() -> dict[str, dict[str, str | bool]]:
     """
     Default healthcheck endpoint. Because of Flask magic, this gets returned
     to the client as a JSON object.
@@ -15,11 +16,6 @@ def default() -> dict[str, dict[str, str|bool]]:
 
     :return: The output of the healthcheck. Currently only confirms that
              the application is running and can serve the route.
-    :rtype: dict[str, dict[str, str|bool]]
+    :rtype: dict[str, dict[str, str | bool]]
     """
-    return {
-        "default": {
-            "message": "Application is running",
-            "success": True
-        }
-    }
+    return {"default": {"message": "Application is running", "success": True}}
