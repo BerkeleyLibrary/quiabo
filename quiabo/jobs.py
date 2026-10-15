@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 
 from celery.result import AsyncResult
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 
 from quiabo.tasks import run_tesseract_job
 
@@ -15,6 +15,12 @@ bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 def create_job():
     """Submit a new OCR job."""
     job = request.get_json()
+
+    unexpected_fields = set(job.keys()) - {"filelist", "languages"}
+    if unexpected_fields:
+        current_app.logger.warning(
+            "Ignoring unexpected job parameters: %s", ", ".join(unexpected_fields)
+        )
 
     try:
         for field in ("filelist", "languages"):

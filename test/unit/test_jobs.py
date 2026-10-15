@@ -36,6 +36,36 @@ def test_create_job(client, tmp_path, monkeypatch):
     }
 
 
+def test_create_job_warns_on_unexpected_parameters(
+    client, tmp_path, monkeypatch, caplog
+):
+    """POST /jobs warns about extra parameters and still accepts the job."""
+    fake_result = Mock()
+    fake_result.id = "12345"
+    monkeypatch.setattr(
+        "quiabo.jobs.run_tesseract_job.delay",
+        Mock(return_value=fake_result),
+    )
+
+    filelist = tmp_path / "filelist.txt"
+    filelist.touch()
+
+    response = client.post(
+        "/jobs",
+        json={
+            "filelist": str(filelist),
+            "languages": ["eng"],
+            "unexpected": "value",
+        },
+    )
+
+    assert response.status_code == 202
+    assert any(
+        "Ignoring unexpected job parameters: unexpected" in record.message
+        for record in caplog.records
+    )
+
+
 def test_create_job_requires_filelist(client):
     """POST /jobs returns 422 when filelist is missing."""
     job = {
