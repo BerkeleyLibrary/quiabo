@@ -4,10 +4,9 @@ import traceback
 from pathlib import Path
 
 from celery.result import AsyncResult
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 
 from quiabo.tasks import run_tesseract_job
-
 
 bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 
@@ -17,8 +16,14 @@ def create_job():
     """Submit a new OCR job."""
     job = request.get_json()
 
+    unexpected_fields = set(job.keys()) - {"filelist", "languages"}
+    if unexpected_fields:
+        current_app.logger.warning(
+            "Ignoring unexpected job parameters: %s", ", ".join(unexpected_fields)
+        )
+
     try:
-        for field in ("filelist", "languages", "output"):
+        for field in ("filelist", "languages"):
             if field not in job:
                 raise ValueError(f"{field} is required")
 
@@ -36,12 +41,10 @@ def create_job():
     except (ValueError, FileNotFoundError) as error:
         return _error_response(error, 422)
 
-
     try:
         celery_result = run_tesseract_job.delay(
             job["filelist"],
             job["languages"],
-            job["output"],
         )
     except Exception as error:  # pylint: disable=broad-exception-caught
         return _error_response(error, 500)
@@ -51,6 +54,7 @@ def create_job():
         "status": "PENDING",
         "job_status": f"/jobs/{celery_result.id}",
     }, 202
+
 
 @bp.get("/<job_id>")
 def get_job(job_id: str):
