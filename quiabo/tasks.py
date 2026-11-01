@@ -3,14 +3,22 @@
 import hashlib
 from pathlib import Path
 
+from celery import shared_task
+from celery.utils.log import get_task_logger
+
 # directly imports run_tesseract which is not explicitly exported by the pytesseract package
 # The two exported functions we could use force a tmp file to be created and then deleted.
 from pytesseract.pytesseract import run_tesseract
-from celery import shared_task
 
+logger = get_task_logger(__name__)
 
 @shared_task(bind=True)
-def run_tesseract_job(self, filelist: str, languages: list[str]) -> dict:
+def run_tesseract_job(
+    self,
+    filelist: str,
+    languages: list[str],
+    correlation_id: str | None = None,
+) -> dict:
     """Run Tesseract over the files listed in filelist and write output PDF."""
 
     # is filelist a valid file with at least one line?  If not, raise an error.
@@ -49,6 +57,23 @@ def run_tesseract_job(self, filelist: str, languages: list[str]) -> dict:
         with open(output_path, "rb") as f:
             sha256 = hashlib.file_digest(f, "sha256").hexdigest()
     except Exception as e:
+        logger.error(
+            "Error running Tesseract: %s",
+            e,
+            extra={
+                "job_id": self.request.id,
+                "correlation_id": correlation_id,
+            },
+        )
         raise RuntimeError(f"Error running Tesseract: {e}") from e
+
+    logger.info(
+        "OCR job completed successfully: %s",
+        output_path,
+        extra={
+            "job_id": self.request.id,
+            "correlation_id": correlation_id,
+        },
+    )
 
     return {"output_path": str(output_path), "sha256": sha256}
