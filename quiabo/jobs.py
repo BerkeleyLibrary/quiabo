@@ -16,7 +16,7 @@ def create_job():
     """Submit a new OCR job."""
     job = request.get_json()
 
-    unexpected_fields = set(job.keys()) - {"filelist", "languages"}
+    unexpected_fields = set(job.keys()) - {"filelist", "languages", "correlation_id"}
     if unexpected_fields:
         current_app.logger.warning(
             "Ignoring unexpected job parameters: %s", ", ".join(unexpected_fields)
@@ -45,6 +45,7 @@ def create_job():
         celery_result = run_tesseract_job.delay(
             job["filelist"],
             job["languages"],
+            correlation_id=job.get("correlation_id"),
         )
     except Exception as error:  # pylint: disable=broad-exception-caught
         return _error_response(error, 500)

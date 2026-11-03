@@ -33,6 +33,24 @@ def test_shared_task_delay_delegates_to_apply_async(monkeypatch):
     )
 
 
+def test_shared_task_delay_with_correlation_id(monkeypatch):
+    """Verify that correlation_id is forwarded to Celery."""
+    apply_async = Mock(return_value="queued")
+    monkeypatch.setattr(run_tesseract_job, "apply_async", apply_async)
+
+    result = run_tesseract_job.delay(
+        "filelist.txt",
+        ["eng", "spa"],
+        correlation_id="mokelumne-test-123",
+    )
+
+    assert result == "queued"
+    apply_async.assert_called_once_with(
+        ("filelist.txt", ["eng", "spa"]),
+        {"correlation_id": "mokelumne-test-123"},
+    )
+
+
 def test_run_tesseract_job_raises_error_for_empty_filelist(tmp_path):
     """Verify that the task rejects an empty file list."""
     filelist = tmp_path / "empty.txt"
@@ -50,8 +68,10 @@ def test_run_tesseract_job_raises_error_for_missing_filelist(tmp_path):
         run_tesseract_job.run(str(filelist), ["eng"])
 
 
-def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_path):
+def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_path, caplog):
     """Verify that the task runs Tesseract and returns the PDF digest."""
+    caplog.set_level("INFO", logger="quiabo.tasks")
+
     images_dir = tmp_path / "999mmsid_like_name"
     images_dir.mkdir()
     filelist = images_dir / "files.txt"
@@ -72,6 +92,7 @@ def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_pat
     result = run_tesseract_job.run(
         str(filelist),
         ["eng", "spa"],
+        correlation_id="mokelumne-test-123",
     )
 
     update_state.assert_called_once_with(
@@ -91,6 +112,12 @@ def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_pat
         "output_path": f"{output}.pdf",
         "sha256": hashlib.sha256(pdf_contents).hexdigest(),
     }
+    assert any(
+        record.levelname == "INFO"
+        and record.correlation_id == "mokelumne-test-123"
+        and "completed" in record.getMessage().lower()
+        for record in caplog.records
+    )
 
 
 def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
@@ -132,3 +159,26 @@ def test_run_tesseract_job_fails_when_language_unavailable(monkeypatch, tmp_path
 
     with pytest.raises(RuntimeError, match="Failed loading language 'swe'"):
         run_tesseract_job.run(str(filelist), ["swe"])
+
+
+def test_run_tesseract_job_logs_correlation_id(monkeypatch, tmp_path, caplog):
+    """Verify that OCR job logs include the correlation ID."""
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "quiabo.tasks.run_tesseract",
+        Mock(side_effect=RuntimeError("Tesseract failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="Error running Tesseract"):
+        run_tesseract_job.run(
+            str(filelist),
+            ["eng"],
+            correlation_id="mokelumne-test-123",
+        )
+
+    assert any(
+        record.correlation_id == "mokelumne-test-123"
+        for record in caplog.records
+    )

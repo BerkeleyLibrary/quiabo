@@ -19,6 +19,7 @@ def test_create_job(client, tmp_path, monkeypatch):
     job = {
         "filelist": str(filelist),
         "languages": ["eng"],
+        "correlation_id": "mokelumne-test-123",
     }
 
     response = client.post("/jobs", json=job)
@@ -26,6 +27,7 @@ def test_create_job(client, tmp_path, monkeypatch):
     delay.assert_called_once_with(
         str(filelist),
         ["eng"],
+        correlation_id="mokelumne-test-123",
     )
 
     assert response.status_code == 202

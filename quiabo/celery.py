@@ -1,7 +1,19 @@
 """Code to initialize the Celery application based on an existing Flask app."""
 
 from celery import Celery, Task
+from celery.signals import after_setup_logger, after_setup_task_logger
 from flask import Flask
+
+from quiabo.logging import JsonFormatter
+
+
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def configure_json_logging(logger=None, **_kwargs):
+    """Apply JSON formatting to Celery log handlers."""
+    if logger is not None:
+        for handler in logger.handlers:
+            handler.setFormatter(JsonFormatter())
 
 
 def celery_init_app(app: Flask) -> Celery:
