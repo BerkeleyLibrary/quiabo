@@ -142,7 +142,10 @@ def test_run_tesseract_job_fails_when_no_pdf_written(monkeypatch, tmp_path):
     filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     monkeypatch.setattr("quiabo.tasks.run_tesseract", Mock())
 
-    with pytest.raises(RuntimeError, match="Error running Tesseract") as exc_info:
+    with pytest.raises(
+        RuntimeError,
+        match="Tesseract did not create expected PDF",
+    ) as exc_info:
         run_tesseract_job.run(str(filelist), ["eng"])
 
     assert isinstance(exc_info.value.__cause__, FileNotFoundError)

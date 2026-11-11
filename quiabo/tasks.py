@@ -51,10 +51,17 @@ def run_tesseract_job(
         "lang": "+".join(languages),
     }
 
+    output_path = Path(f"{output}.pdf")
+
     try:
         run_tesseract(**kwargs)
-        output_path = f"{output}.pdf"
-        with open(output_path, "rb") as f:
+
+        if not output_path.is_file():
+            raise FileNotFoundError(
+                f"Tesseract did not create expected PDF: {output_path}"
+            )
+
+        with output_path.open("rb") as f:
             sha256 = hashlib.file_digest(f, "sha256").hexdigest()
     except Exception as e:
         logger.error(
