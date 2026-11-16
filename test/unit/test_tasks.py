@@ -1,6 +1,7 @@
 """Unit tests for the shared task defined in ``tasks.py``."""
 
 import hashlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -112,12 +113,26 @@ def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_pat
         "output_path": f"{output}.pdf",
         "sha256": hashlib.sha256(pdf_contents).hexdigest(),
     }
-    assert any(
-        record.levelname == "INFO"
-        and record.correlation_id == "mokelumne-test-123"
-        and "completed" in record.getMessage().lower()
+    completion_records = [
+        record
         for record in caplog.records
-    )
+        if getattr(record, "event", None) == "ocr_job_finished"
+    ]
+
+    assert len(completion_records) == 1
+
+    record = completion_records[0]
+
+    assert record.levelname == "INFO"
+    assert record.correlation_id == "mokelumne-test-123"
+    assert record.status == "success"
+    assert record.image_count == 2
+    assert record.languages == ["eng", "spa"]
+    assert record.duration_seconds >= 0
+    assert record.tesseract_seconds >= 0
+    assert record.queue_wait_seconds is None
+    assert record.worker_hostname
+    assert record.error_type is None
 
 
 def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
@@ -136,8 +151,10 @@ def test_run_tesseract_job_wraps_tesseract_errors(monkeypatch, tmp_path):
     assert exc_info.value.__cause__ is error
 
 
-def test_run_tesseract_job_fails_when_no_pdf_written(monkeypatch, tmp_path):
+def test_run_tesseract_job_fails_when_no_pdf_written(monkeypatch, tmp_path, caplog):
     """Verify that the task fails when Tesseract writes no PDF."""
+    caplog.set_level("INFO", logger="quiabo.tasks")
+
     filelist = tmp_path / "files.txt"
     filelist.write_text("image1.tif\nimage2.tif\n", encoding="utf-8")
     monkeypatch.setattr("quiabo.tasks.run_tesseract", Mock())
@@ -148,7 +165,20 @@ def test_run_tesseract_job_fails_when_no_pdf_written(monkeypatch, tmp_path):
     ) as exc_info:
         run_tesseract_job.run(str(filelist), ["eng"])
 
+    completion_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ocr_job_finished"
+    ]
+
+    assert len(completion_records) == 1
+    record = completion_records[0]
+
     assert isinstance(exc_info.value.__cause__, FileNotFoundError)
+    assert record.status == "failure"
+    assert record.error_type == "FileNotFoundError"
+    assert record.tesseract_seconds is not None
+    assert record.image_count == 2
 
 
 def test_run_tesseract_job_fails_when_language_unavailable(monkeypatch, tmp_path):
@@ -185,3 +215,84 @@ def test_run_tesseract_job_logs_correlation_id(monkeypatch, tmp_path, caplog):
         record.correlation_id == "mokelumne-test-123"
         for record in caplog.records
     )
+
+
+def test_run_tesseract_job_records_queue_wait(monkeypatch, tmp_path, caplog):
+    """Verify queue wait is calculated from the submission timestamp."""
+    caplog.set_level("INFO", logger="quiabo.tasks")
+
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    def write_output(**kwargs):
+        Path(f"{kwargs['output_filename_base']}.pdf").write_bytes(b"PDF")
+
+    monkeypatch.setattr("quiabo.tasks.run_tesseract", write_output)
+
+    submitted_at = (
+        datetime.now(timezone.utc) - timedelta(seconds=10)
+    ).isoformat()
+
+    run_tesseract_job.push_request(
+        headers={"submitted_at": submitted_at}
+    )
+    try:
+        run_tesseract_job.run(str(filelist), ["eng"])
+    finally:
+        run_tesseract_job.pop_request()
+
+    completion_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ocr_job_finished"
+    ]
+
+    assert len(completion_records) == 1
+
+    record = completion_records[0]
+
+    assert record.status == "success"
+    assert record.queue_wait_seconds == pytest.approx(10, abs=1)
+
+
+@pytest.mark.parametrize(
+    "submitted_at",
+    [
+        "not-a-timestamp",
+        "2026-11-16T12:00:00",
+    ],
+)
+def test_run_tesseract_job_ignores_invalid_submission_timestamp(
+    monkeypatch, tmp_path, caplog, submitted_at
+):
+    """Verify invalid timing metadata does not prevent OCR."""
+    caplog.set_level("INFO", logger="quiabo.tasks")
+
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    def write_output(**kwargs):
+        Path(f"{kwargs['output_filename_base']}.pdf").write_bytes(b"PDF")
+
+    monkeypatch.setattr("quiabo.tasks.run_tesseract", write_output)
+
+    run_tesseract_job.push_request(
+        headers={"submitted_at": submitted_at}
+    )
+    try:
+        result = run_tesseract_job.run(str(filelist), ["eng"])
+    finally:
+        run_tesseract_job.pop_request()
+
+    assert Path(result["output_path"]).is_file()
+
+    completion_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ocr_job_finished"
+    ]
+
+    assert len(completion_records) == 1
+    assert completion_records[0].status == "success"
+    assert completion_records[0].queue_wait_seconds is None
+    assert "Invalid Celery submission timestamp" in caplog.text

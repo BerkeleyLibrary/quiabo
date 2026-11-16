@@ -1,6 +1,7 @@
 """Routes for submitting and managing OCR jobs."""
 
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 from celery.result import AsyncResult
@@ -42,10 +43,12 @@ def create_job():
         return _error_response(error, 422)
 
     try:
-        celery_result = run_tesseract_job.delay(
-            job["filelist"],
-            job["languages"],
-            correlation_id=job.get("correlation_id"),
+        celery_result = run_tesseract_job.apply_async(
+            args=[job["filelist"], job["languages"]],
+            kwargs={"correlation_id": job.get("correlation_id")},
+            headers={
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            },
         )
     except Exception as error:  # pylint: disable=broad-exception-caught
         return _error_response(error, 500)
