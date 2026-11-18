@@ -75,3 +75,27 @@ you will need to set the following:
 | -------------------- | ------- | ------- |
 | `QUIABO_CELERY__broker_url` | Connection URL for the Celery broker (e.g. Redis) | `redis://redis:6379` |
 | `QUIABO_CELERY__result_backend` | SQLAlchemy connection URL for the Celery result backend (e.g. Postgres) | `db+postgresql://postgres:postgres@db:5432/quiabo` |
+
+## Performance Logging
+
+Quiabo creates JSON logs for OCR jobs, including performance metrics and error information. These logs can be collected by AWS CloudWatch to monitor OCR processing across multiple Celery workers.
+
+Each completed OCR task creates an `ocr_job_finished` event with the following fields:
+
+| Field | Description |
+| --- | --- |
+| `job_id` | Celery task ID |
+| `correlation_id` | Optional identifier supplied by the calling application |
+| `event` | Event name (`ocr_job_finished`) |
+| `status` | Job outcome (`success` or `failure`) |
+| `duration_seconds` | Total task execution time, including validation, OCR, and post-processing |
+| `tesseract_seconds` | Time spent running Tesseract |
+| `queue_wait_seconds` | Time between job submission and worker execution |
+| `image_count` | Number of images in the input filelist |
+| `languages` | OCR languages requested |
+| `worker_hostname` | Celery worker hostname |
+| `error_type` | Exception class name on failure; otherwise `null` |
+
+The `queue_wait_seconds` metric is calculated using a UTC timestamp attached when the job is submitted. If the timestamp is missing or invalid, the metric is `null` and OCR processing continues normally.
+
+Performance metrics are emitted for both successful and failed tasks. These structured events can be queried and aggregated in CloudWatch Logs Insights to analyze processing times, queue delays, worker activity, and failures.

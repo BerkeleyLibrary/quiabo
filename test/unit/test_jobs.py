@@ -1,17 +1,19 @@
 """Tests for the jobs endpoints."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 
 def test_create_job(client, tmp_path, monkeypatch):
-    """POST /jobs returns an accepted response."""
+    """POST /jobs returns an accepted response with a submission timestamp."""
     fake_result = Mock()
     fake_result.id = "12345"
-    delay = Mock(return_value=fake_result)
+    apply_async = Mock(return_value=fake_result)
 
-    monkeypatch.setattr("quiabo.jobs.run_tesseract_job.delay", delay)
+    monkeypatch.setattr(
+        "quiabo.jobs.run_tesseract_job.apply_async", apply_async
+    )
 
     filelist = tmp_path / "filelist.txt"
     filelist.touch()
@@ -24,11 +26,21 @@ def test_create_job(client, tmp_path, monkeypatch):
 
     response = client.post("/jobs", json=job)
 
-    delay.assert_called_once_with(
-        str(filelist),
-        ["eng"],
-        correlation_id="mokelumne-test-123",
+    apply_async.assert_called_once()
+
+    call_kwargs = apply_async.call_args.kwargs
+
+    assert call_kwargs["args"] == [str(filelist), ["eng"]]
+    assert call_kwargs["kwargs"] == {
+        "correlation_id": "mokelumne-test-123",
+    }
+
+    submitted_at = datetime.fromisoformat(
+        call_kwargs["headers"]["submitted_at"]
     )
+
+    assert submitted_at.tzinfo is not None
+    assert submitted_at <= datetime.now(timezone.utc)
 
     assert response.status_code == 202
     assert response.json == {
@@ -45,7 +57,7 @@ def test_create_job_warns_on_unexpected_parameters(
     fake_result = Mock()
     fake_result.id = "12345"
     monkeypatch.setattr(
-        "quiabo.jobs.run_tesseract_job.delay",
+        "quiabo.jobs.run_tesseract_job.apply_async",
         Mock(return_value=fake_result),
     )
 
@@ -155,8 +167,10 @@ def test_create_job_returns_500_when_queue_fails(client, tmp_path, monkeypatch):
     filelist = tmp_path / "filelist.txt"
     filelist.touch()
 
-    delay = Mock(side_effect=RuntimeError("queue unavailable"))
-    monkeypatch.setattr("quiabo.jobs.run_tesseract_job.delay", delay)
+    apply_async = Mock(side_effect=RuntimeError("queue unavailable"))
+    monkeypatch.setattr(
+        "quiabo.jobs.run_tesseract_job.apply_async", apply_async
+    )
 
     response = client.post(
         "/jobs",
