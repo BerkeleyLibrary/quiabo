@@ -1,9 +1,11 @@
 """Celery tasks for running OCR jobs."""
 
+import errno
 import hashlib
 import socket
 import time
 from datetime import datetime, timezone
+from flask import current_app
 from pathlib import Path
 
 from celery import shared_task
@@ -14,6 +16,15 @@ from celery.utils.log import get_task_logger
 from pytesseract.pytesseract import run_tesseract
 
 logger = get_task_logger(__name__)
+
+
+def is_retryable_error(error: Exception) -> bool:
+    """Return True for transient OS errors that may succeed on retry."""
+    return isinstance(error, OSError) and error.errno in {
+        errno.EAGAIN,
+        errno.ETIMEDOUT,
+    }
+
 
 @shared_task(bind=True)
 def run_tesseract_job(
@@ -110,19 +121,37 @@ def run_tesseract_job(
     except Exception as e:
         error_type = type(e).__name__
 
+        if is_retryable_error(e):
+            max_retries = current_app.config["OCR_MAX_RETRIES"]
+
+            if self.request.retries < max_retries:
+                status = "retry"
+            else:
+
+                logger.error(
+                    "Tesseract retries exhausted: %s",
+                    e,
+                    extra={
+                        "job_id": self.request.id,
+                        "correlation_id": correlation_id,
+                    },
+                )
+
+            retry_delay = current_app.config["OCR_RETRY_BACKOFF"] * (2 ** self.request.retries)
+
+            raise self.retry(
+                exc=e,
+                countdown=retry_delay,
+                max_retries=max_retries,
+            )
+
         logger.error(
             "Error running Tesseract: %s",
             e,
-            extra={
-                "job_id": self.request.id,
-                "correlation_id": correlation_id,
-            },
+            extra={"job_id": self.request.id, "correlation_id": correlation_id},
         )
-
-        # Preserve original exception types for input validation errors.
         if not validation_complete and isinstance(e, (FileNotFoundError, ValueError)):
             raise
-
         raise RuntimeError(f"Error running Tesseract: {e}") from e
 
     finally:
