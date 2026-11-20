@@ -1,14 +1,40 @@
 """Unit tests for the shared task defined in ``tasks.py``."""
 
+import errno
 import hashlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock
+from quiabo import app
 
 import pytest
 
 from pytesseract.pytesseract import TesseractError
-from quiabo.tasks import run_tesseract_job
+from quiabo.tasks import is_retryable_error, run_tesseract_job
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("Missing filelist"),
+        PermissionError("Permission denied"),
+        ValueError("Invalid OCR language"),
+        RuntimeError("Unexpected Tesseract failure"),
+        OSError(errno.EINTR, "Interrupted system call"),
+    ],
+)
+def test_non_retryable_errors(error):
+    assert is_retryable_error(error) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OSError(errno.EAGAIN, "Resource temporarily unavailable"),
+        OSError(errno.ETIMEDOUT, "Operation timed out"),
+    ],
+)
+def test_transient_errors_are_retryable(error):
+    assert is_retryable_error(error) is True
 
 
 def test_shared_task_is_registered():
@@ -67,6 +93,119 @@ def test_run_tesseract_job_raises_error_for_missing_filelist(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="does not exist"):
         run_tesseract_job.run(str(filelist), ["eng"])
+
+
+@pytest.mark.parametrize(
+    ("retry_count", "expected_delay"),
+    [
+        (0, 30),
+        (1, 60),
+        (2, 120),
+    ],
+)
+def test_run_tesseract_job_retries_transient_errors(
+    monkeypatch, tmp_path, retry_count, expected_delay
+):
+    """Verify transient errors trigger retries with exponential backoff."""
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    error = OSError(errno.EAGAIN, "Resource temporarily unavailable")
+
+    monkeypatch.setattr(
+        "quiabo.tasks.run_tesseract",
+        Mock(side_effect=error),
+    )
+
+    retry = Mock(side_effect=RuntimeError("Retry requested"))
+    monkeypatch.setattr(run_tesseract_job, "retry", retry)
+
+    run_tesseract_job.push_request(retries=retry_count)
+    try:
+        with app.app_context():
+            with pytest.raises(RuntimeError, match="Retry requested"):
+                run_tesseract_job.run(str(filelist), ["eng"])
+    finally:
+        run_tesseract_job.pop_request()
+
+    retry.assert_called_once_with(
+        exc=error,
+        countdown=expected_delay,
+        max_retries=3,
+    )
+
+
+def test_run_tesseract_job_stops_after_max_retries(monkeypatch, tmp_path, caplog):
+    """Verify exhausted retries result in a final failure."""
+    caplog.set_level("INFO", logger="quiabo.tasks")
+
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    error = OSError(errno.EAGAIN, "Resource temporarily unavailable")
+    monkeypatch.setattr(
+        "quiabo.tasks.run_tesseract",
+        Mock(side_effect=error),
+    )
+
+    run_tesseract_job.push_request(retries=3)
+    try:
+        with app.app_context():
+            with pytest.raises(OSError) as exc_info:
+                run_tesseract_job.run(str(filelist), ["eng"])
+    finally:
+        run_tesseract_job.pop_request()
+
+    assert exc_info.value is error
+
+    completion_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "ocr_job_finished"
+    ]
+
+    assert len(completion_records) == 1
+    assert completion_records[0].status == "failure"
+    assert completion_records[0].error_type == "BlockingIOError"
+
+    assert any(
+        record.levelname == "ERROR"
+        and "Resource temporarily unavailable" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_run_tesseract_job_uses_configured_retry_settings(monkeypatch, tmp_path):
+    """Verify retry settings can be overridden through Flask configuration."""
+    filelist = tmp_path / "files.txt"
+    filelist.write_text("image1.tif\n", encoding="utf-8")
+
+    error = OSError(errno.EAGAIN, "Resource temporarily unavailable")
+    monkeypatch.setattr(
+        "quiabo.tasks.run_tesseract",
+        Mock(side_effect=error),
+    )
+
+    retry = Mock(side_effect=RuntimeError("Retry requested"))
+    monkeypatch.setattr(run_tesseract_job, "retry", retry)
+
+    # Override the defaults for this test.
+    monkeypatch.setitem(app.config, "OCR_MAX_RETRIES", 5)
+    monkeypatch.setitem(app.config, "OCR_RETRY_BACKOFF", 10)
+
+    run_tesseract_job.push_request(retries=2)
+    try:
+        with app.app_context():
+            with pytest.raises(RuntimeError, match="Retry requested"):
+                run_tesseract_job.run(str(filelist), ["eng"])
+    finally:
+        run_tesseract_job.pop_request()
+
+    retry.assert_called_once_with(
+        exc=error,
+        countdown=40,
+        max_retries=5,
+    )
 
 
 def test_run_tesseract_job_updates_state_and_returns_digest(monkeypatch, tmp_path, caplog):

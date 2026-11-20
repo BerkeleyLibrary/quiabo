@@ -18,6 +18,11 @@ def create_app() -> Flask:
 
     default_handler.setFormatter(JsonFormatter())
 
+    flask_app.config.update(
+        OCR_MAX_RETRIES=3,
+        OCR_RETRY_BACKOFF=30,
+    )
+
     flask_app.config.from_prefixed_env(prefix="QUIABO")
 
     flask_app.register_blueprint(root.bp)
