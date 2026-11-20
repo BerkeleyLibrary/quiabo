@@ -68,34 +68,38 @@ docker compose exec app python -m mypy --explicit-package-bases quiabo test
 
 `quiabo`'s configuration is handled by environment variables using Flask's
 [`from_prefixed_env()`](https://flask.palletsprojects.com/en/stable/config/#configuring-from-environment-variables) method, using `QUIABO` as the
-prefix. Celery configuration is set using the same method. At a minimum,
-you will need to set the following:
+prefix. Celery configuration is set using the same method. The following environment variables are supported. The Celery broker and result
+backend settings are required; OCR retry settings are optional.
 
 | Environment variable | Purpose | Example |
 | -------------------- | ------- | ------- |
 | `QUIABO_CELERY__broker_url` | Connection URL for the Celery broker (e.g. Redis) | `redis://redis:6379` |
 | `QUIABO_CELERY__result_backend` | SQLAlchemy connection URL for the Celery result backend (e.g. Postgres) | `db+postgresql://postgres:postgres@db:5432/quiabo` |
+| `QUIABO_OCR_MAX_RETRIES` | Maximum number of retries per OCR job (default: `3`) | `5` |
+| `QUIABO_OCR_RETRY_BACKOFF` | Initial retry delay in seconds (default: `30`) | `60` |
+
+OCR jobs retry transient errors using exponential backoff. By default, jobs are retried up to three times, with delays of 30, 60, and 120 seconds. Permanent errors, such as permission failures or invalid input, are not retried.
 
 ## Performance Logging
 
 Quiabo creates JSON logs for OCR jobs, including performance metrics and error information. These logs can be collected by AWS CloudWatch to monitor OCR processing across multiple Celery workers.
 
-Each completed OCR task creates an `ocr_job_finished` event with the following fields:
+Each OCR task attempt creates an `ocr_job_finished` event with the following fields:
 
 | Field | Description |
 | --- | --- |
 | `job_id` | Celery task ID |
 | `correlation_id` | Optional identifier supplied by the calling application |
 | `event` | Event name (`ocr_job_finished`) |
-| `status` | Job outcome (`success` or `failure`) |
+| `status` | Job outcome (`success`, `failure` or `retry`) |
 | `duration_seconds` | Total task execution time, including validation, OCR, and post-processing |
 | `tesseract_seconds` | Time spent running Tesseract |
 | `queue_wait_seconds` | Time between job submission and worker execution |
 | `image_count` | Number of images in the input filelist |
 | `languages` | OCR languages requested |
 | `worker_hostname` | Celery worker hostname |
-| `error_type` | Exception class name on failure; otherwise `null` |
+| `error_type` | Exception class name on failure or retry; otherwise `null` |
 
 The `queue_wait_seconds` metric is calculated using a UTC timestamp attached when the job is submitted. If the timestamp is missing or invalid, the metric is `null` and OCR processing continues normally.
 
-Performance metrics are emitted for both successful and failed tasks. These structured events can be queried and aggregated in CloudWatch Logs Insights to analyze processing times, queue delays, worker activity, and failures.
+Performance metrics are emitted for successful, failed and retried tasks. These structured events can be queried and aggregated in CloudWatch Logs Insights to analyze processing times, queue delays, worker activity, and failures.
