@@ -77,7 +77,6 @@ def run_tesseract_job(
 
         validation_complete = True
 
-
         # output_parent will be something like '/path/to/derivatives/{images_dir_name}'
         # output, or base name of the pdf, will look like '/path/to/derivatives/C124862721/C124862721'
         # tesseract appends the .pdf extension
@@ -122,12 +121,9 @@ def run_tesseract_job(
         error_type = type(e).__name__
 
         if is_retryable_error(e):
-            max_retries = current_app.config["OCR_MAX_RETRIES"]
-
-            if self.request.retries < max_retries:
+            if self.request.retries < current_app.config["OCR_MAX_RETRIES"]:
                 status = "retry"
             else:
-
                 logger.error(
                     "Tesseract retries exhausted: %s",
                     e,
@@ -142,7 +138,7 @@ def run_tesseract_job(
             raise self.retry(
                 exc=e,
                 countdown=retry_delay,
-                max_retries=max_retries,
+                max_retries=current_app.config["OCR_MAX_RETRIES"],
             )
 
         logger.error(
@@ -150,8 +146,10 @@ def run_tesseract_job(
             e,
             extra={"job_id": self.request.id, "correlation_id": correlation_id},
         )
+
         if not validation_complete and isinstance(e, (FileNotFoundError, ValueError)):
             raise
+
         raise RuntimeError(f"Error running Tesseract: {e}") from e
 
     finally:
